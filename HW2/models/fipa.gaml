@@ -33,11 +33,13 @@ species Auctioneers skills: [fipa]{
 	}
 	
 	reflex startAuction when: (time = 1) {
-		Guests g <- Guests at 1;
+		Guests g <- Guests at 0;
 		write 'Start Auction: ' + name + ' sends cfp msg to all guests participating in auction ';
 		do start_conversation with: [to :: list(Guests), protocol :: 'fipa-contract-net', performative :: 'cfp', contents :: ['Sell for price: ' + 'set price variable here'] ];
 		
 	}
+	
+	reflex receiveProposal when:!
 	
 	
 	reflex readMsgAgree when: !(empty(agrees)) {
@@ -60,9 +62,9 @@ species Guests skills: [fipa]{
 		draw circle(2) color:#green;		
 	}
 	
-	reflex receiveCFP when: !(empty(cfp)) {
-		//message proposalFromInitiator <- cfps[0];
-		//write '(Time ' + time + '): ' + name + ' receives a cfp message from ' + agent(proposalFromInitiator.sender).name + ' with content ' + proposalFromInitiator.contents;
+	reflex receiveCFP when: !(empty(cfps)) {
+		message proposalFromInitiator <- cfps[0];
+		write '(Time ' + time + '): ' + name + ' receives a cfp message from ' + agent(proposalFromInitiator.sender).name + ' with content ' + proposalFromInitiator.contents;
 		
 //		if (self = refuser) {
 //			write '\t' + name + ' sends a refuse message to ' + agent(proposalFromInitiator.sender).name;
