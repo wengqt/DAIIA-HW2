@@ -20,7 +20,8 @@ global {
 		
 //		create Auctioneers_dutch number: 1;
 		
-		create Auctioneers_english number:1;
+//		create Auctioneers_english number:1;
+		create Auctioneers_sealed number:1;
 		create Guests number: 5;
 
 	}
@@ -47,7 +48,7 @@ species Auctioneers_dutch skills: [fipa]{
 //		Guests g <- Guests at 0;
 		write 'Start inform: ' + name + ' sends inform of auction ';
 		
-		do start_conversation with: [to :: list(Guests), protocol :: 'no-protocol', performative :: 'query', contents :: ['Selling a shirt','Dutch'] ];
+		do start_conversation with: [to :: list(Guests), protocol :: 'no-protocol', performative :: 'inform', contents :: ['Selling a shirt','Dutch'] ];
 	}
 	
 	reflex receiveProposal when: !empty(proposes){
@@ -120,7 +121,7 @@ species Auctioneers_english skills:[fipa]{
 	
 	reflex startAuction_inform when: (time = 1){
 		write 'auctioneer sends out auction information';
-		do start_conversation with: [to :: list(Guests), protocol :: 'no-protocol', performative :: 'query', contents :: ['Selling a house','English'] ];
+		do start_conversation with: [to :: list(Guests), protocol :: 'no-protocol', performative :: 'inform', contents :: ['Selling a house','English'] ];
 	}
 	
 	reflex startAuction when:(time = 2){
@@ -170,6 +171,57 @@ species Auctioneers_english skills:[fipa]{
 }
 
 
+species Auctioneers_sealed skills: [fipa]{
+	string type <- 'clothes';
+	list<Guests> guests;
+	int price <- rnd(20, 150);
+	int min_price <-60;
+//	int max_acceptable_price;
+	int status <-1; //1 - no one buy it. 0-sold out.
+	int maxPrice <- 0;
+	//message winner <- nil;
+	Guests winner <- nil;
+	
+	aspect default {
+		draw rectangle(4, 4) color: (type = "clothes")? #red : #blue;	
+	}
+	
+	reflex startAuction_inform when: (time = 1) {
+		write 'Informing auction: ' + name + ' starting of type: ' + type;
+		
+		do start_conversation with: [to :: list(Guests), protocol :: 'no-protocol', performative :: 'inform', contents :: ['Selling: '+ type,'Sealed'] ];
+	}
+	
+	reflex startAuction when: (time = 2) {
+		write 'Starting auction: ' + name + ' starting of type: ' + type + ' (sends cfp msg to all guests)';
+		do start_conversation with: [to :: list(Guests), protocol :: 'fipa-contract-net', performative :: 'cfp', contents :: ['Selling: ' + type + ' Please place your bid'] ];	
+		
+	}
+	
+	reflex receiveProposal when: !empty(proposes){
+		
+		loop p over: proposes {
+			string content <- p.contents[0];
+			int p2 <- content as_int 10;
+			write name + ' got an offer from ' + p.sender + ' of ' + p.contents[0];
+			if(p2 > maxPrice) {
+				maxPrice <- p2;
+				winner <- Guests(agent(p.sender));
+//				write ''+winner.name;
+			}
+		}
+		
+		do start_conversation (to: list(winner), protocol: 'fipa-contract-net', performative: 'accept_proposal', contents: ['win']);
+		write name + ' bid ended. Sold to ' + winner.name;
+		//do accept_proposal with: (message: winner2, contents: ['Congrats you won!']);
+//		write ''+length(guests);
+		do start_conversation (to: proposer_list, protocol: 'fipa-contract-net', performative: 'inform', contents: ["end bid"]);
+		proposer_list <- [];
+	}
+	
+	
+}
+
 
 
 
@@ -188,7 +240,7 @@ species Guests skills: [fipa]{
 	reflex recvAccept when: !(empty(accept_proposals)) and status=1{
 		message msg <-accept_proposals[0];
 		write '(Time ' + time + '): '+ name + ' buy from '+ agent(msg.sender).name +' at price '+ price;
-		status<-0;
+//		status<-0;
 	}
 	
 	
@@ -212,7 +264,7 @@ species Guests skills: [fipa]{
 				
 			}
 			write '(Time ' + time + '): ' + name + ' receives a cfp message from ' + agent(proposalFromInitiator.sender).name + ' with content ' + proposalFromInitiator.contents;
-			write 'log: ' + name + ' propose to ' + agent(proposalFromInitiator.sender).name + ' with price ' + price +' and bid for '+ my_price;
+			write '(Time ' + time + '): ' + name + ' propose to ' + agent(proposalFromInitiator.sender).name + ' with price ' + price +' and bid for '+ my_price;
 			do propose with: [ message :: proposalFromInitiator, contents :: [my_price] ];
 		}else if(self in refuser_list){
 			do refuse with: [ message :: proposalFromInitiator, contents :: ['not understood'] ];
@@ -230,7 +282,7 @@ species Guests skills: [fipa]{
 			
 			if(flip(0.5)){
 				my_price <- price + rnd(50) ;
-				write 'log: ' + name + ' propose to ' + agent(proposalFromInitiator.sender).name + ' with price ' + price +' and bid for '+ my_price;
+				write '(Time ' + time + '): ' + name + ' propose to ' + agent(proposalFromInitiator.sender).name + ' with price ' + price +' and bid for '+ my_price;
 				do propose with: [ message :: proposalFromInitiator, contents :: [my_price] ];
 			}else{
 				
@@ -242,32 +294,62 @@ species Guests skills: [fipa]{
 		
 	}
 	
+	reflex receiveCFP_sealed when: !(empty(cfps)) and auction_type=2{
+		message proposalFromInitiator <- cfps[0];
+		
+		
+		Auctioneers_sealed auctionInitiator <- Auctioneers_sealed(proposalFromInitiator.sender);
+		
+		
+		if (self in proposer_list){
+			
+			auctionInitiator.guests <+ self;
+			status <- 1;
+			my_price <- rnd(200) ;
+			//write '(Time ' + time + '): ' + name + ' receives a cfp message from ' + auction.name + ' with content ' + proposalFromInitiator.contents;
+			write '(Time ' + time + '): ' + name+' is interested in ' +' proposal from '+ auctionInitiator.name + ' and bid for '+ my_price;
+			do start_conversation (to: proposalFromInitiator.sender, protocol: 'fipa-propose', performative: 'propose', contents: [my_price]);
+//			auction <- nil;
+		} else {
+//			write 'log:'+ name+' is not interested in proposal';
+			do refuse with: [ message :: proposalFromInitiator, contents :: ['not understood'] ];
+		}
+		
+		
+	}
 	
 	
-	reflex recvInform when: !(empty(queries)){
-		message msg <- queries[0];
+	
+	reflex recvInformStart when: !(empty(informs)) and status = 0{
+		message msg <- informs[0];
 		
 		
 		if(flip(0.7)){
-			write 'log:'+ name+' is interested in proposal from '+ agent(queries[0].sender).name+' ' + msg.contents[1]; 
+			write '(Time ' + time + '): ' + name+' is interested in proposal from '+ agent(informs[0].sender).name+' ' + msg.contents[1]; 
 			add self to: proposer_list;
 			if(msg.contents[1]='English'){
 				auction_type <-1;
 			}else if(msg.contents[1]='Dutch'){
 				auction_type <-0;
+			}else if(msg.contents[1]='Sealed'){
+				auction_type <-2;
 			}
 			status<-1;
 		}else{
-			write 'log:'+ name+' is NOT interested in proposal from '+ agent(queries[0].sender).name+' ' + msg.contents[1]; 
+			write '(Time ' + time + '): ' + name+' is NOT interested in proposal from '+ agent(informs[0].sender).name+' ' + msg.contents[1]; 
 			add self to: refuser_list;
 		}
 //		write "length: "+ length(queries);
 		do end_conversation with:[ message :: msg, contents :: ['we know'] ];
 	}
 	
-	reflex recvInform2 when: !(empty(informs)){
+	reflex recvInformEnd when: !(empty(informs)) and status = 1{
 		message msg <- informs[0];
+		Auctioneers_sealed informingAuction <- Auctioneers_sealed(agent(msg.sender));
 		write '(Time ' + time + '): ' + name + ' receive from '+ agent(msg.sender).name +'about '+ msg.contents[0] ;
+		if(auction_type=2){
+			remove self from: informingAuction.guests;
+		}
 		status<-0;
 		auction_type <-0;
 		my_price <-0;
