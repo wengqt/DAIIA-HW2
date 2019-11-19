@@ -51,15 +51,6 @@ species Auctioneers skills: [fipa]{
 	
 	reflex receiveProposal when: !empty(proposes){
 		
-//		write '(Time ' + time + '): ' + name + ' receives propose messages';
-		
-//		loop p over: proposes {
-//
-
-//
-////			do comparePrice(p, p2);
-//			
-//		}
 		loop p over: proposes {
 			string content <- p.contents[0];
 			int p2 <- content as_int 10;

@@ -30,7 +30,7 @@ global {
 
 species Auctioneers skills: [fipa]{
 	
-	int min_price <-150;
+	int min_price <-100;
 //	int max_acceptable_price;
 	int status <-1; //1 - no one buy it. 0-sold out.
 	
@@ -49,7 +49,7 @@ species Auctioneers skills: [fipa]{
 //		Guests g <- Guests at 0;
 		write 'Start inform: ' + name + ' sends inform of auction ';
 		
-		do start_conversation with: [to :: list(Guests), protocol :: 'no-protocol', performative :: 'query', contents :: ['Selling a shirt '] ];
+		do start_conversation with: [to :: list(Guests), protocol :: 'fipa-contract-net', performative :: 'inform', contents :: ['start an auction '] ];
 	}
 	
 	reflex receiveProposal when: !empty(proposes){
@@ -96,11 +96,11 @@ species Auctioneers skills: [fipa]{
 		
 		
 		if(price2>=price and status =1){
-			write '(Time ' + time + '): ' + name + ' accept propose from '+ agent(p.sender).name +'at price '+price;
+			write '(Time ' + time + '): ' + name + ' accept propose from '+ agent(p.sender).name +' at price '+price2;
 			do accept_proposal with: [ message :: p, contents :: ['sell it at price'] ];
 			status <-0;
 		}else{
-			write '(Time ' + time + '): ' + name + ' REJECT propose from '+ agent(p.sender).name +'at price '+price;
+			write '(Time ' + time + '): ' + name + ' REJECT propose from '+ agent(p.sender).name +' at price '+price2;
 			do reject_proposal with: [ message :: p, contents :: ['reject'] ];
 		}
 	}
@@ -116,14 +116,20 @@ species Guests skills: [fipa]{
 	int status <-0; //0- end auction, 1- in auction.
 	int my_price <-0 ;
 	aspect default {
-		draw circle(2) color:#green;		
+		
+		if status=1{
+			draw circle(2) color:#red;	
+		}else{
+			draw circle(2) color:#green;	
+		}
+			
 	}
 	
 	
 	reflex recvAccept when: !(empty(accept_proposals)) and status=1{
 		message msg <-accept_proposals[0];
 		write '(Time ' + time + '): '+ name + ' buy from '+ agent(msg.sender).name +' at price '+ my_price;
-		status<-0;
+//		status<-0;
 	}
 	
 	
@@ -134,10 +140,12 @@ species Guests skills: [fipa]{
 	}
 	
 	reflex receiveCFP when: !(empty(cfps)) {
-		message proposalFromInitiator <- cfps[0];
 		
+		message proposalFromInitiator <- cfps[0];
+		write '(Time ' + time + '): ' + name + ' receives a cfp message from ' + agent(proposalFromInitiator.sender).name + ' with content ' + proposalFromInitiator.contents;
 
 		if(self in proposer_list){
+			status<-1;
 			if price < my_price{
 				my_price <- price;
 			}else{
@@ -146,8 +154,7 @@ species Guests skills: [fipa]{
 				}
 				
 			}
-			write '(Time ' + time + '): ' + name + ' receives a cfp message from ' + agent(proposalFromInitiator.sender).name + ' with content ' + proposalFromInitiator.contents;
-			write 'log: ' + name + ' propose to ' + agent(proposalFromInitiator.sender).name + ' with price ' + price +' and bid for '+ my_price;
+			write '(Time ' + time + '): ' + name + ' propose to ' + agent(proposalFromInitiator.sender).name + ' with price ' + price +' and bid for '+ my_price;
 			do propose with: [ message :: proposalFromInitiator, contents :: [my_price] ];
 		}else if(self in refuser_list){
 			do refuse with: [ message :: proposalFromInitiator, contents :: ['not understood'] ];
@@ -157,41 +164,32 @@ species Guests skills: [fipa]{
 	
 	
 	
-	reflex recvInform when: !(empty(queries)){
-		message msg <- queries[0];
+	reflex recvInformStart when: !(empty(informs)) and status = 0{
+		message msg <- informs[0];
 		
 		
 		if(flip(0.7)){
-			write 'log:'+ name+' is interested in proposal from '+ agent(queries[0].sender).name; 
+			write '(Time ' + time + '): ' + name+' is interested in proposal from '+ agent(informs[0].sender).name; 
 			add self to: proposer_list;
-			status<-1;
+			
 		}else{
-			write 'log:'+ name+' is NOT interested in proposal from '+ agent(queries[0].sender).name; 
+			write '(Time ' + time + '): ' + name+' is NOT interested in proposal from '+ agent(informs[0].sender).name; 
 			add self to: refuser_list;
 		}
 //		write "length: "+ length(queries);
 		do end_conversation with:[ message :: msg, contents :: ['we know'] ];
 	}
 	
-	reflex recvInform2 when: !(empty(informs)){
+	reflex recvInform2 when: !(empty(informs)) and status = 1{
 		message msg <- informs[0];
 		write '(Time ' + time + '): ' + name + ' receive from '+ agent(msg.sender).name +'about '+ msg.contents[0] ;
 		status<-0;
-		do end_conversation with:[ message :: msg, contents :: ['end auction'] ];
+//		do end_conversation with:[ message :: msg, contents :: ['end auction'] ];
 		
 	}
 	
 	
-	
-	
-//	reflex replyOnBid when: !(empty(requests)) {
-//		message requestFromInitatior <- (requests at 0);
-//		
-//		do agree with: (message: requestFromInitatior, contents: ['Agreee']);
-//		
-//		write 'failure, inform auctioneer';
-//		do failure (message: requestFromInitatior, contents: ['broken']);
-//	}
+
 }
 
 experiment fipa type:gui {
